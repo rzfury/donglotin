@@ -148,7 +148,7 @@ export default async function handler(
                   console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
                 })
                 .catch(err => {
-                  console.log("MESSAGE HOOK ERROR: " + err.response);
+                  console.log("MESSAGE HOOK ERROR: ", "\n", JSON.stringify(err));
                 });
             }
             else {
