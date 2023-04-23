@@ -16,6 +16,7 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
             embedsTemplate = videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', '');
           }
           else {
+            console.log('FAILED TO GET EMBED FOR GROUP PERMALINKS: No matches for "twitter:player"');
             reject('Video Unavailable, video link: ' + url);
           }
         })
@@ -31,6 +32,7 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
             embedsTemplate = fixUrl.toString();
           }
           else {
+            console.log('FAILED TO GET EMBED FOR POSTIDONLY: No matches for "twitter:player"');
             reject('Video Unavailable, video link: ' + url);
           }
         })
@@ -40,15 +42,16 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
       embedsTemplate = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&width=500&show_text=false&height=889`;
     }
 
-    await fetch(embedsTemplate)
-      .then(async res => {
-        const html: string = await res.text();
+    await axios(embedsTemplate)
+      .then(res => {
+        const html: string = res.data;
         const matches = html.match(/"([^"]*\.mp4[^"]*)"/);
         if (matches) {
           const cdn = matches[1].replaceAll('&amp;', '&').replaceAll('\\', '');
           resolve(cdn);
         }
         else {
+          console.log('FAILED TO GET CDN: No matches for .mp4 when fetching');
           reject('Video Unavailable, video link: ' + url);
         }
       })
@@ -77,7 +80,7 @@ function sendDefaultErrorMessage(senderId: string, text?: string) {
     data
   })
     .then(res => {
-      
+
     })
     .catch(err => {
       console.log("ERROR: " + err.response);
@@ -119,45 +122,66 @@ export default async function handler(
               console.log("MENTION HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
             })
             .catch(err => {
-              console.log("MENTION HOOK ERROR: " + err.response);
+              console.log("MENTION HOOK ERROR: ", "\n", JSON.stringify(err));
             });
         }
         else if (body.entry[0].messaging?.[0]) {
-          const attachments = body.entry[0].messaging[0].message.attachments;
-
-          if (Array.isArray(attachments)) {
-            const payload = attachments[0].payload;
-            const senderId = body.entry[0].messaging[0].sender.id;
-
-            if (typeof (payload.url) === 'string') {
-              const cdnUrl = await getVideoCDNUrl(payload.url);
-              const data = {
-                message: {
-                  text: cdnUrl
-                },
+          if (body.entry[0].messaging[0].sender.id === '12334') {
+            axios('', {
+              method: 'POST',
+              data: {
                 recipient: {
-                  id: senderId.toString(),
+                  id: '6340751989347705',
+                },
+                message: {
+                  text: `Test data, sent ${new Date().toISOString()}.\n${JSON.stringify(body)}`,
                 }
-              };
-
-              axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
-                method: 'POST',
-                data
+              }
+            })
+              .then(res => {
+                console.log("MESSAGE TEST HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
               })
-                .then(res => {
-                  console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
-                })
-                .catch(err => {
-                  console.log("MESSAGE HOOK ERROR: ", "\n", JSON.stringify(err));
-                });
-            }
-            else {
-              sendDefaultErrorMessage(senderId)
-            }
+              .catch(err => {
+                console.log("MESSAGE TEST HOOK ERROR: ", "\n", JSON.stringify(err));
+              });
           }
           else {
-            const message = body.entry[0].messaging[0].message.text;
-            console.log(`MESSAGE(from: ${body.entry[0].messaging[0].sender.id}): ${message}`);
+            const attachments = body.entry[0].messaging[0].message.attachments;
+
+            if (Array.isArray(attachments)) {
+              const payload = attachments[0].payload;
+              const senderId = body.entry[0].messaging[0].sender.id;
+
+              if (typeof (payload.url) === 'string') {
+                const cdnUrl = await getVideoCDNUrl(payload.url);
+                const data = {
+                  message: {
+                    text: cdnUrl
+                  },
+                  recipient: {
+                    id: senderId.toString(),
+                  }
+                };
+
+                axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
+                  method: 'POST',
+                  data
+                })
+                  .then(res => {
+                    console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
+                  })
+                  .catch(err => {
+                    console.log("MESSAGE HOOK ERROR: ", "\n", JSON.stringify(err));
+                  });
+              }
+              else {
+                sendDefaultErrorMessage(senderId)
+              }
+            }
+            else {
+              const message = body.entry[0].messaging[0].message.text;
+              console.log(`MESSAGE(from: ${body.entry[0].messaging[0].sender.id}): ${message}`);
+            }
           }
         }
 
