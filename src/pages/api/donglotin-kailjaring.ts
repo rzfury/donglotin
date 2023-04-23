@@ -9,7 +9,6 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
       const permalinksUrl = new URL(url);
       const postId = permalinksUrl.searchParams.get('multi_permalinks');
       const postUrlTemplate = `${permalinksUrl.origin}${permalinksUrl.pathname}posts/${postId}`;
-      console.log('PERMALINKS CORRECTED: ' + postUrlTemplate);
       await axios(postUrlTemplate.trim())
         .then(res => {
           const videoPhpUrl = getMetaTwitterPlayerContent(res.data);
@@ -24,24 +23,22 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
     }
     else if (postIdOnly) {
       await axios(url)
-      .then(res => {
-        const videoPhpUrl = getMetaTwitterPlayerContent(res.data);
-        if (videoPhpUrl.length > 0) {
-          const fixUrl = new URL(videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', ''));
-          fixUrl.searchParams.set('href', ('https://www.facebook.com' + fixUrl.searchParams.get('href')));
-          embedsTemplate = fixUrl.toString();
-        }
-        else {
-          reject('Video Unavailable, video link: ' + url);
-        }
-      })
-      .catch(reject);
+        .then(res => {
+          const videoPhpUrl = getMetaTwitterPlayerContent(res.data);
+          if (videoPhpUrl.length > 0) {
+            const fixUrl = new URL(videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', ''));
+            fixUrl.searchParams.set('href', ('https://www.facebook.com' + fixUrl.searchParams.get('href')));
+            embedsTemplate = fixUrl.toString();
+          }
+          else {
+            reject('Video Unavailable, video link: ' + url);
+          }
+        })
+        .catch(reject);
     }
     else {
       embedsTemplate = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&width=500&show_text=false&height=889`;
     }
-
-    console.log('FETCH URL: ' + embedsTemplate);
 
     await fetch(embedsTemplate)
       .then(async res => {
@@ -79,8 +76,11 @@ function sendDefaultErrorMessage(senderId: string, text?: string) {
     method: 'POST',
     data
   })
+    .then(res => {
+      
+    })
     .catch(err => {
-      console.log(err.response)
+      console.log("ERROR: " + err.response);
     });
 }
 
@@ -101,9 +101,7 @@ export default async function handler(
       }
     }
     else {
-      console.log(JSON.stringify(body));
       try {
-
         if (body.entry[0].changes?.[0].field === 'mention') {
           const postId = body.entry[0].changes[0].value.post_id;
           const commentId = body.entry[0].changes[0].value.comment_id;
@@ -112,14 +110,16 @@ export default async function handler(
           const data = {
             message: cdnUrl,
           };
-          console.log('CDN URL: ' + cdnUrl);
 
           axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}_${commentId}/comments?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
             method: 'POST',
             data
           })
+            .then(res => {
+              console.log("MENTION HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
+            })
             .catch(err => {
-              console.log(err.response)
+              console.log("MENTION HOOK ERROR: " + err.response);
             });
         }
         else if (body.entry[0].messaging?.[0]) {
@@ -139,15 +139,16 @@ export default async function handler(
                   id: senderId.toString(),
                 }
               };
-              console.log('CDN URL: ' + cdnUrl);
-              console.log('Data: ' + JSON.stringify(data));
 
               axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
                 method: 'POST',
                 data
               })
+                .then(res => {
+                  console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
+                })
                 .catch(err => {
-                  console.log(err.response)
+                  console.log("MESSAGE HOOK ERROR: " + err.response);
                 });
             }
             else {
@@ -156,10 +157,9 @@ export default async function handler(
           }
           else {
             const message = body.entry[0].messaging[0].message.text;
-            console.log("MESSAGE: " + message);
+            console.log(`MESSAGE(from: ${body.entry[0].messaging[0].sender.id}): ${message}`);
           }
         }
-
 
         res.status(200).json({ success: true });
       }
