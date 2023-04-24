@@ -31,6 +31,13 @@ async function getVideoCDNUrl(url: string) {
           success = true;
         }
       })
+      .catch(err => {
+        timber.log({
+          __source: 'Donglotin',
+          message: 'Get Video CDN: Case 1',
+          errorData: err,
+        })
+      })
 
     if (success)
       return;
@@ -46,7 +53,6 @@ async function getVideoCDNUrl(url: string) {
         // checking meta og:url
 
         const ogUrl = $('meta[property="og:url"]');
-        console.log('meta[property="og:url"]: ', ogUrl.attr('content'));
         if (ogUrl.attr('content')) {
           await axios.get('https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(ogUrl.attr('content')!))
             .then(res => {
@@ -56,6 +62,13 @@ async function getVideoCDNUrl(url: string) {
                 resolve(extractFullFromHtml(html))
                 success = true;
               }
+            })
+            .catch(err => {
+              timber.log({
+                __source: 'Donglotin',
+                message: 'Get Video CDN: Case 2',
+                errorData: err,
+              })
             })
         }
 
@@ -68,8 +81,6 @@ async function getVideoCDNUrl(url: string) {
           const pageCanonical = $('link[rel="canonical"]').attr('href')!;
           const allegedlyUrl = `${pageCanonical.replace('groups/', '')}posts/${videoId}`;
 
-          console.log('Probably the link: ' + allegedlyUrl);
-
           await axios.get('https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(allegedlyUrl))
             .then(res => {
               const html = res.data;
@@ -79,6 +90,13 @@ async function getVideoCDNUrl(url: string) {
                 success = true;
               }
             })
+            .catch(err => {
+              timber.log({
+                __source: 'Donglotin',
+                message: 'Get Video CDN: Case 3',
+                errorData: err,
+              })
+            })
         }
 
         if (success)
@@ -87,11 +105,9 @@ async function getVideoCDNUrl(url: string) {
         // checking element with data-store
 
         const dataStoreEl = $('[data-store*=.mp4]');
-        console.log('[data-store*=.mp4]: ', dataStoreEl.attr('data-store'))
 
         if (dataStoreEl.attr('data-store')) {
           // has data-store element, can directly get cdn
-          console.log(dataStoreEl.attr('data-store')!);
           const dataStore = JSON.parse(dataStoreEl.attr('data-store')!);
           resolve({
             hdSrc: undefined,
@@ -141,6 +157,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<any>
 ) {
+  console.log('WEBHOOK! 1')
+
   if (req.method === 'GET' || req.method === 'POST') {
     const query = req.query;
     const body = req.body;
@@ -154,6 +172,8 @@ export default async function handler(
       }
     }
     else {
+      console.log('WEBHOOK! 2')
+
       try {
         if (body.entry[0].changes?.[0].field === 'mention') {
           const postId = body.entry[0].changes[0].value.post_id;
@@ -174,29 +194,23 @@ export default async function handler(
             })
           })
             .catch(err => {
-              timberLogData = {
-                ...timberLogData,
-                ...{
-                  __source: 'Donglotin',
-                  whatsFailing: 'FB Graph API to reply to comments',
-                  message: 'Failed to post reply on mention logic',
-                  errorData: err,
-                  apiPayload: data,
-                  webhookEntries: body.entry
-                }
-              }
+              timber.log({
+                __source: 'Donglotin',
+                whatsFailing: 'FB Graph API to reply to comments',
+                message: 'Failed to post reply on mention logic',
+                errorData: err,
+                apiPayload: data,
+                webhookEntries: body.entry
+              })
             });
         }
         else if (body.entry[0].messaging?.[0]) {
           if (body.entry[0].messaging[0].sender.id === '12334') {
-            timberLogData = {
-              ...timberLogData,
-              ...{
-                __source: 'Donglotin',
-                message: 'Testing value received for messaging webhook',
-                webhookEntries: body.entry
-              }
-            }
+            timber.log({
+              __source: 'Donglotin',
+              message: 'Testing value received for messaging webhook',
+              webhookEntries: body.entry
+            })
           }
           else {
             const attachments = body.entry[0].messaging[0].message.attachments;
@@ -211,13 +225,13 @@ export default async function handler(
                 });
 
                 let message = '';
-                if (typeof(cdnUrl.hdSrc) === 'string') {
+                if (typeof (cdnUrl.hdSrc) === 'string') {
                   message = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
                 }
                 else {
                   message = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
                 }
-                
+
                 const data = {
                   message: {
                     text: message
@@ -235,29 +249,23 @@ export default async function handler(
                   })
                 })
                   .catch(err => {
-                    timberLogData = {
-                      ...timberLogData,
-                      ...{
-                        __source: 'Donglotin',
-                        whatsFailing: 'FB Graph API to reply to message',
-                        message: 'Failed to post reply on messaging',
-                        errorData: err,
-                        apiPayload: data,
-                        webhookEntries: body.entry
-                      }
-                    }
+                    timber.log({
+                      __source: 'Donglotin',
+                      whatsFailing: 'FB Graph API to reply to message',
+                      message: 'Failed to post reply on messaging',
+                      errorData: err,
+                      apiPayload: data,
+                      webhookEntries: body.entry
+                    })
                   });
               }
               else {
-                timberLogData = {
-                  ...timberLogData,
-                  ...{
-                    __source: 'Donglotin',
-                    whatsFailing: 'FB Graph API to reply to message',
-                    message: 'Message does not have any attachments',
-                    webhookEntries: body.entry
-                  }
-                }
+                timber.log({
+                  __source: 'Donglotin',
+                  whatsFailing: 'FB Graph API to reply to message',
+                  message: 'Message does not have any attachments',
+                  webhookEntries: body.entry
+                });
               }
             }
             else {
@@ -270,22 +278,15 @@ export default async function handler(
         res.status(200).json({ success: true });
       }
       catch (err) {
-        timberLogData = {
-          ...timberLogData,
-          ...{
-            __source: 'Donglotin',
-            errorData: err
-          }
-        }
+        timber.log({
+          __source: 'Donglotin',
+          errorData: err
+        })
         res.status(200).json({ success: false });
       }
     }
   }
   else {
     res.status(404).end()
-  }
-
-  if (Object.keys(timberLogData).length > 0) {
-    timberLog(timberLogData);
   }
 }
