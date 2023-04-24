@@ -5,15 +5,144 @@ import * as cheerio from 'cheerio'
 import UserAgent from 'user-agents'
 import timber from '~/utils/timber'
 import { extractFullFromHtml } from '~/webhook-func/extractor'
+import handleVerfication from '~/webhook-func/handle-verification'
 
-let timberLogData: any = {}
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<any>
+) {
+  console.log('WEBHOOK! 1')
 
-function timberLog(data: any) {
-  axios.post('https://timber.rzfury.dev/api/post', data, {
-    params: {
-      'i_need_to_bypass_the_challenge': process.env.TIMBER_CHALLENGE_BYPASS_PASSCODE
+  if (req.method === 'GET') {
+    const query = req.query;
+    handleVerfication(
+      query,
+      (challenge) => {
+        res.status(200).send(challenge);
+      },
+      () => {
+        res.status(400).end()
+      }
+    )
+    return;
+  }
+
+  
+  if (req.method === 'POST') {
+    let success: boolean = false;
+    const body = req.body;
+
+    if (body.entry[0].changes?.[0].field === 'mention') {
+      const postId = body.entry[0].changes[0].value.post_id;
+      const commentId = body.entry[0].changes[0].value.comment_id;
+      const postUrl = `https://www.facebook.com/${postId}`;
+      const cdnUrl = await getVideoCDNUrl(postUrl).catch(err => {
+        throw err
+      });
+      const data = {
+        message: cdnUrl,
+      };
+
+      await axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}_${commentId}/comments?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
+        method: 'POST',
+        data,
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: false
+        })
+      })
+      .catch(err => {
+        console.error(err.response);
+      })
+
+      res.status(200).end();
+      return;
     }
-  })
+
+    if (body.entry[0].messaging?.[0].sender.id === '12334') {
+      timber.log({
+        __source: 'Donglotin',
+        message: 'Testing value received for messaging webhook',
+        webhookEntries: body.entry
+      })
+      res.status(200).end();
+      return;
+    }
+
+    const attachments = body.entry?.[0]?.messaging?.[0]?.message?.attachments;
+
+    if (Array.isArray(attachments)) {
+      const payload = attachments[0].payload;
+      const senderId = body.entry[0].messaging[0].sender.id;
+
+      if (typeof (payload.url) === 'string') {
+        const cdnUrl: any = await getVideoCDNUrl(payload.url).catch(err => {
+          throw err;
+        });
+
+        let message = '';
+        if (typeof (cdnUrl.hdSrc) === 'string') {
+          message = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
+        }
+        else {
+          message = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
+        }
+
+        const data = {
+          message: {
+            text: message
+          },
+          recipient: {
+            id: senderId.toString(),
+          }
+        };
+
+        await axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
+          method: 'POST',
+          data,
+          httpsAgent: new https.Agent({
+            rejectUnauthorized: false
+          })
+        })
+          .then(res => {
+            console.log('SUCCESS SEND TO USER: ' + JSON.stringify(res.data))
+            success = true;
+          })
+          .catch(err => {
+            timber.log({
+              __source: 'Donglotin',
+              whatsFailing: 'FB Graph API to reply to message',
+              message: 'Failed to post reply on messaging',
+              errorData: err,
+              apiPayload: data,
+              webhookEntries: body.entry
+            })
+          });
+      }
+      else {
+        timber.log({
+          __source: 'Donglotin',
+          whatsFailing: 'FB Graph API to reply to message',
+          message: 'Message does not have any attachments',
+          webhookEntries: body.entry
+        });
+
+        res.status(200).end()
+      }
+    }
+
+    if(success) {
+      res.status(200).end()
+      return;
+    }    
+    
+    const message = body.entry[0].messaging[0].message.text;
+    console.log(`MESSAGE(from: ${body.entry[0].messaging[0].sender.id}): ${message}`);
+    
+    res.status(200).end()
+    return;
+  }
+
+  res.status(404).end()
 }
 
 async function getVideoCDNUrl(url: string) {
@@ -151,144 +280,4 @@ async function getVideoCDNUrl(url: string) {
 
     reject('Cannot get CDN, URL: ' + url);
   });
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<any>
-) {
-  console.log('WEBHOOK! 1')
-
-  if (req.method === 'GET' || req.method === 'POST') {
-    const query = req.query;
-    const body = req.body;
-
-    if (('hub.mode' in query) && ('hub.challenge' in query) && ('hub.verify_token' in query)) {
-      if (query['hub.verify_token'] === process.env.WEBHOOK_VERIFY_TOKEN) {
-        res.status(200).send(query['hub.challenge']);
-      }
-      else {
-        res.status(400).end();
-      }
-    }
-    else {
-      try {
-        if (body.entry[0].changes?.[0].field === 'mention') {
-          const postId = body.entry[0].changes[0].value.post_id;
-          const commentId = body.entry[0].changes[0].value.comment_id;
-          const postUrl = `https://www.facebook.com/${postId}`;
-          const cdnUrl = await getVideoCDNUrl(postUrl).catch(err => {
-            throw err
-          });
-          const data = {
-            message: cdnUrl,
-          };
-
-          axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}_${commentId}/comments?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
-            method: 'POST',
-            data,
-            httpsAgent: new https.Agent({
-              rejectUnauthorized: false
-            })
-          })
-            .catch(err => {
-              timber.log({
-                __source: 'Donglotin',
-                whatsFailing: 'FB Graph API to reply to comments',
-                message: 'Failed to post reply on mention logic',
-                errorData: err,
-                apiPayload: data,
-                webhookEntries: body.entry
-              })
-            });
-        }
-        else if (body.entry[0].messaging?.[0]) {
-          console.log('WEBHOOK! 2')
-          if (body.entry[0].messaging[0].sender.id === '12334') {
-            timber.log({
-              __source: 'Donglotin',
-              message: 'Testing value received for messaging webhook',
-              webhookEntries: body.entry
-            })
-          }
-          else {
-            const attachments = body.entry[0].messaging[0].message.attachments;
-
-            if (Array.isArray(attachments)) {
-              const payload = attachments[0].payload;
-              const senderId = body.entry[0].messaging[0].sender.id;
-
-              if (typeof (payload.url) === 'string') {
-                const cdnUrl: any = await getVideoCDNUrl(payload.url).catch(err => {
-                  throw err;
-                });
-
-                let message = '';
-                if (typeof (cdnUrl.hdSrc) === 'string') {
-                  message = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
-                }
-                else {
-                  message = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
-                }
-
-                const data = {
-                  message: {
-                    text: message
-                  },
-                  recipient: {
-                    id: senderId.toString(),
-                  }
-                };
-
-                await axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
-                  method: 'POST',
-                  data,
-                  httpsAgent: new https.Agent({
-                    rejectUnauthorized: false
-                  })
-                })
-                  .then(res => {
-                    console.log('SUCCESS SEND TO USER: ' + JSON.stringify(res.data))
-                  })
-                  .catch(err => {
-                    timber.log({
-                      __source: 'Donglotin',
-                      whatsFailing: 'FB Graph API to reply to message',
-                      message: 'Failed to post reply on messaging',
-                      errorData: err,
-                      apiPayload: data,
-                      webhookEntries: body.entry
-                    })
-                  });
-              }
-              else {
-                timber.log({
-                  __source: 'Donglotin',
-                  whatsFailing: 'FB Graph API to reply to message',
-                  message: 'Message does not have any attachments',
-                  webhookEntries: body.entry
-                });
-              }
-            }
-            else {
-              const message = body.entry[0].messaging[0].message.text;
-              console.log(`MESSAGE(from: ${body.entry[0].messaging[0].sender.id}): ${message}`);
-            }
-          }
-        }
-
-        res.status(200).json({ success: true });
-      }
-      catch (err) {
-        timber.log({
-          __source: 'Donglotin',
-          errorData: err
-        })
-        res.status(200).json({ success: false });
-      }
-    }
-  }
-  else {
-    res.status(404).end()
-  }
 }
