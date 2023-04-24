@@ -214,8 +214,6 @@ export default async function handler(
           else {
             const attachments = body.entry[0].messaging[0].message.attachments;
 
-          console.log(JSON.stringify(body))
-
             if (Array.isArray(attachments)) {
               const payload = attachments[0].payload;
               const senderId = body.entry[0].messaging[0].sender.id;
@@ -241,6 +239,8 @@ export default async function handler(
                     id: senderId.toString(),
                   }
                 };
+
+                console.log(data);
 
                 axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
                   method: 'POST',
