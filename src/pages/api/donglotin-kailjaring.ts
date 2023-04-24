@@ -240,15 +240,16 @@ export default async function handler(
                   }
                 };
 
-                console.log(data);
-
-                axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
+                await axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
                   method: 'POST',
                   data,
                   httpsAgent: new https.Agent({
                     rejectUnauthorized: false
                   })
                 })
+                  .then(res => {
+                    console.log('SUCCESS SEND TO USER: ' + JSON.stringify(res.data))
+                  })
                   .catch(err => {
                     timber.log({
                       __source: 'Donglotin',
