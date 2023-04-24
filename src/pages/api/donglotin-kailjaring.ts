@@ -1,6 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import axios from 'axios'
 
+let timberLogData: any = {}
+
+function timberLog(data: any) {
+  axios.post('https://timber.rzfury.dev/api/post', data, {
+    params: {
+      'i_need_to_bypass_the_challenge': process.env.TIMBER_CHALLENGE_BYPASS_PASSCODE
+    }
+  })
+}
+
 async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
   return new Promise(async (resolve, reject) => {
     let embedsTemplate: string = '', fails: boolean = false;
@@ -16,8 +26,19 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
             embedsTemplate = videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', '');
           }
           else {
-            console.log('FAILED TO GET EMBED FOR GROUP PERMALINKS: No matches for "twitter:player"');
-            reject('Video Unavailable, video link: ' + url);
+            timberLogData = {
+              ...timberLogData,
+              ...{
+                __source: 'Donglotin',
+                message: 'Failed to get embed for group permalinks',
+                reason: 'No matches for "twitter:player"',
+                type: 'group-permalinks',
+                url,
+                postUrlTemplate,
+                videoPhpUrl,
+              }
+            }
+            reject(false);
           }
         })
         .catch(reject);
@@ -32,8 +53,19 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
             embedsTemplate = fixUrl.toString();
           }
           else {
-            console.log('FAILED TO GET EMBED FOR POSTIDONLY: No matches for "twitter:player"');
-            reject('Video Unavailable, video link: ' + url);
+            timberLogData = {
+              ...timberLogData,
+              ...{
+                __source: 'Donglotin',
+                whatsFailing: 'Twitter Player Embed Extraction',
+                message: 'Failed to get embed for post id only',
+                reason: 'No matches for "twitter:player"',
+                type: 'post-id-only',
+                url,
+                videoPhpUrl,
+              }
+            }
+            reject(false);
           }
         })
         .catch(reject);
@@ -51,7 +83,16 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
           resolve(cdn);
         }
         else {
-          console.log('FAILED TO GET CDN: No matches for .mp4 when fetching');
+          timberLogData = {
+            ...timberLogData,
+            ...{
+              __source: 'Donglotin',
+              whatsFailing: 'CDN Extraction',
+              message: 'Failed to get CDN',
+              reason: 'No matches for "twitter:player"',
+              url,
+            }
+          }
           reject('Video Unavailable, video link: ' + url);
         }
       })
@@ -63,28 +104,6 @@ function getMetaTwitterPlayerContent(htmlString: string) {
   const match = htmlString.match(/<meta\s+name="twitter:player"\s+content="([^"]+)"\s*\/?>/);
   const twitterPlayerContent = match ? match[1] : '';
   return twitterPlayerContent;
-}
-
-function sendDefaultErrorMessage(senderId: string, text?: string) {
-  const data = {
-    message: {
-      text: text ? text : 'Link tidak ditemukan, mungkin karena private video atau link sudah rusak.',
-    },
-    recipient: {
-      id: senderId.toString(),
-    }
-  };
-
-  axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
-    method: 'POST',
-    data
-  })
-    .then(res => {
-
-    })
-    .catch(err => {
-      console.log("ERROR: " + err.response);
-    });
 }
 
 export default async function handler(
@@ -118,32 +137,30 @@ export default async function handler(
             method: 'POST',
             data
           })
-            .then(res => {
-              console.log("MENTION HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
-            })
             .catch(err => {
-              console.log("MENTION HOOK ERROR: ", "\n", JSON.stringify(err));
+              timberLogData = {
+                ...timberLogData,
+                ...{
+                  __source: 'Donglotin',
+                  whatsFailing: 'FB Graph API to reply to comments',
+                  message: 'Failed to post reply on mention logic',
+                  errorData: err,
+                  apiPayload: data,
+                  webhookEntries: body.entry
+                }
+              }
             });
         }
         else if (body.entry[0].messaging?.[0]) {
           if (body.entry[0].messaging[0].sender.id === '12334') {
-            axios('', {
-              method: 'POST',
-              data: {
-                recipient: {
-                  id: '6340751989347705',
-                },
-                message: {
-                  text: `Test data, sent ${new Date().toISOString()}.\n${JSON.stringify(body)}`,
-                }
+            timberLogData = {
+              ...timberLogData,
+              ...{
+                __source: 'Donglotin',
+                message: 'Testing value received for messaging webhook',
+                webhookEntries: body.entry
               }
-            })
-              .then(res => {
-                console.log("MESSAGE TEST HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
-              })
-              .catch(err => {
-                console.log("MESSAGE TEST HOOK ERROR: ", "\n", JSON.stringify(err));
-              });
+            }
           }
           else {
             const attachments = body.entry[0].messaging[0].message.attachments;
@@ -171,11 +188,29 @@ export default async function handler(
                     console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
                   })
                   .catch(err => {
-                    console.log("MESSAGE HOOK ERROR: ", "\n", JSON.stringify(err));
+                    timberLogData = {
+                      ...timberLogData,
+                      ...{
+                        __source: 'Donglotin',
+                        whatsFailing: 'FB Graph API to reply to message',
+                        message: 'Failed to post reply on messaging',
+                        errorData: err,
+                        apiPayload: data,
+                        webhookEntries: body.entry
+                      }
+                    }
                   });
               }
               else {
-                sendDefaultErrorMessage(senderId)
+                timberLogData = {
+                  ...timberLogData,
+                  ...{
+                    __source: 'Donglotin',
+                    whatsFailing: 'FB Graph API to reply to message',
+                    message: 'Message does not have any attachments',
+                    webhookEntries: body.entry
+                  }
+                }
               }
             }
             else {
@@ -188,12 +223,22 @@ export default async function handler(
         res.status(200).json({ success: true });
       }
       catch (err) {
-        console.log("ERROR: " + err);
+        timberLogData = {
+          ...timberLogData,
+          ...{
+            __source: 'Donglotin',
+            errorData: err
+          }
+        }
         res.status(200).json({ success: false });
       }
     }
   }
   else {
     res.status(404).end()
+  }
+
+  if (Object.keys(timberLogData).length > 0) {
+    timberLog(timberLogData);
   }
 }
