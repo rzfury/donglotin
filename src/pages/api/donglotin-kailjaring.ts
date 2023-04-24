@@ -149,7 +149,7 @@ async function getVideoCDNUrl(url: string) {
     if (success)
       return;
 
-    reject('Cannot get CDN');
+    reject('Cannot get CDN, URL: ' + url);
   });
 }
 
