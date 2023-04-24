@@ -1,6 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import https from 'node:https'
 import axios from 'axios'
+import * as cheerio from 'cheerio'
+import UserAgent from 'user-agents'
+import timber from '~/utils/timber'
+import { extractFullFromHtml } from '~/webhook-func/extractor'
 
 let timberLogData: any = {}
 
@@ -12,100 +16,125 @@ function timberLog(data: any) {
   })
 }
 
-async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
+async function getVideoCDNUrl(url: string) {
   return new Promise(async (resolve, reject) => {
-    let embedsTemplate: string = '', fails: boolean = false;
+    let success: boolean = false;
 
-    if (url.includes('multi_permalinks') && url.includes('groups')) {
-      const permalinksUrl = new URL(url);
-      const postId = permalinksUrl.searchParams.get('multi_permalinks');
-      const postUrlTemplate = `${permalinksUrl.origin}${permalinksUrl.pathname}posts/${postId}`;
-      await axios(postUrlTemplate.trim())
-        .then(res => {
-          const videoPhpUrl = getMetaTwitterPlayerContent(res.data);
-          if (videoPhpUrl.length > 0) {
-            embedsTemplate = videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', '');
-          }
-          else {
-            timberLogData = {
-              ...timberLogData,
-              ...{
-                __source: 'Donglotin',
-                message: 'Failed to get embed for group permalinks',
-                reason: 'No matches for "twitter:player"',
-                type: 'group-permalinks',
-                url,
-                postUrlTemplate,
-                videoPhpUrl,
-              }
-            }
-            reject(false);
-          }
-        })
-        .catch(reject);
-    }
-    else if (postIdOnly) {
-      await axios(url)
-        .then(res => {
-          const videoPhpUrl = getMetaTwitterPlayerContent(res.data);
-          if (videoPhpUrl.length > 0) {
-            const fixUrl = new URL(videoPhpUrl.replaceAll('&amp;', '&').replaceAll('\\', ''));
-            fixUrl.searchParams.set('href', ('https://www.facebook.com' + fixUrl.searchParams.get('href')));
-            embedsTemplate = fixUrl.toString();
-          }
-          else {
-            timberLogData = {
-              ...timberLogData,
-              ...{
-                __source: 'Donglotin',
-                whatsFailing: 'Twitter Player Embed Extraction',
-                message: 'Failed to get embed for post id only',
-                reason: 'No matches for "twitter:player"',
-                type: 'post-id-only',
-                url,
-                videoPhpUrl,
-              }
-            }
-            reject(false);
-          }
-        })
-        .catch(reject);
-    }
-    else {
-      embedsTemplate = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&width=500&show_text=false&height=889`;
-    }
+    // directly use plugin/video.php
 
-    await axios(embedsTemplate)
+    await axios.get('https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(url))
       .then(res => {
-        const html: string = res.data;
-        const matches = html.match(/"([^"]*\.mp4[^"]*)"/);
-        if (matches) {
-          const cdn = matches[1].replaceAll('&amp;', '&').replaceAll('\\', '');
-          resolve(cdn);
-        }
-        else {
-          timberLogData = {
-            ...timberLogData,
-            ...{
-              __source: 'Donglotin',
-              whatsFailing: 'CDN Extraction',
-              message: 'Failed to get CDN',
-              reason: 'No matches for "twitter:player"',
-              embedsTemplate,
-              url,
-            }
-          }
-          reject('Video Unavailable, video link: ' + url);
+        const html = res.data;
+
+        if (html.includes('.mp4')) {
+          resolve(extractFullFromHtml(html));
+          success = true;
         }
       })
-      .catch(reject);
-  });
-}
 
-function getMetaTwitterPlayerContent(htmlString: string) {
-  const match = htmlString.match(/<meta\s+name="twitter:player"\s+content="([^"]+)"\s*\/?>/);
-  const twitterPlayerContent = match ? match[1] : '';
-  return twitterPlayerContent;
+    if (success)
+      return;
+
+    // inspecting element
+
+    const ua = new UserAgent({ deviceCategory: 'mobile', platform: 'iPhone' }).toString();
+    await axios.get(url, { headers: { 'User-Agent': ua } })
+      .then(async res => {
+        const html = res.data;
+        const $ = cheerio.load(html);
+
+        // checking meta og:url
+
+        const ogUrl = $('meta[property="og:url"]');
+        console.log('meta[property="og:url"]: ', ogUrl.attr('content'));
+        if (ogUrl.attr('content')) {
+          await axios.get('https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(ogUrl.attr('content')!))
+            .then(res => {
+              const html = res.data;
+
+              if (html.includes('.mp4')) {
+                resolve(extractFullFromHtml(html))
+                success = true;
+              }
+            })
+        }
+
+        if (success)
+          return;
+
+        // if link has groups and multi_permalinks
+        if (url.includes('groups') && url.includes('multi_permalinks')) {
+          const videoId = url.match(/multi_permalinks=\d+/g)![0].replace('multi_permalinks=', '');
+          const pageCanonical = $('link[rel="canonical"]').attr('href')!;
+          const allegedlyUrl = `${pageCanonical.replace('groups/', '')}posts/${videoId}`;
+
+          console.log('Probably the link: ' + allegedlyUrl);
+
+          await axios.get('https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(allegedlyUrl))
+            .then(res => {
+              const html = res.data;
+
+              if (html.includes('.mp4')) {
+                resolve(extractFullFromHtml(html))
+                success = true;
+              }
+            })
+        }
+
+        if (success)
+          return;
+
+        // checking element with data-store
+
+        const dataStoreEl = $('[data-store*=.mp4]');
+        console.log('[data-store*=.mp4]: ', dataStoreEl.attr('data-store'))
+
+        if (dataStoreEl.attr('data-store')) {
+          // has data-store element, can directly get cdn
+          console.log(dataStoreEl.attr('data-store')!);
+          const dataStore = JSON.parse(dataStoreEl.attr('data-store')!);
+          resolve({
+            hdSrc: undefined,
+            sdSrc: undefined,
+            sdSrcNoRateLimit: dataStore.src,
+          });
+          success = true;
+        }
+
+        if (success)
+          return;
+      })
+      .catch(reject)
+
+    if (success)
+      return;
+
+    // use m.facebook.com with very specific macintosh user-agent
+
+    await axios.get(url.replace('www.facebook', 'm.facebook'), { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15' } })
+      .then(async res => {
+        const $ = cheerio.load(res.data);
+        const dataStoreEl = $('[data-store*=.mp4]');
+        if (dataStoreEl.attr('data-store')) {
+          const dataStore = JSON.parse(dataStoreEl.attr('data-store')!);
+          resolve({
+            hdSrc: undefined,
+            sdSrc: undefined,
+            sdSrcNoRateLimit: dataStore.src,
+          });
+          success = true;
+        }
+
+        if (success)
+          return;
+      })
+      .catch(reject);
+
+    if (success)
+      return;
+
+    reject('Cannot get CDN');
+  });
 }
 
 export default async function handler(
@@ -130,7 +159,9 @@ export default async function handler(
           const postId = body.entry[0].changes[0].value.post_id;
           const commentId = body.entry[0].changes[0].value.comment_id;
           const postUrl = `https://www.facebook.com/${postId}`;
-          const cdnUrl = await getVideoCDNUrl(postUrl, true);
+          const cdnUrl = await getVideoCDNUrl(postUrl).catch(err => {
+            throw err
+          });
           const data = {
             message: cdnUrl,
           };
@@ -175,10 +206,21 @@ export default async function handler(
               const senderId = body.entry[0].messaging[0].sender.id;
 
               if (typeof (payload.url) === 'string') {
-                const cdnUrl = await getVideoCDNUrl(payload.url);
+                const cdnUrl: any = await getVideoCDNUrl(payload.url).catch(err => {
+                  throw err;
+                });
+
+                let message = '';
+                if (typeof(cdnUrl.hdSrc) === 'string') {
+                  message = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
+                }
+                else {
+                  message = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
+                }
+                
                 const data = {
                   message: {
-                    text: cdnUrl
+                    text: message
                   },
                   recipient: {
                     id: senderId.toString(),
@@ -192,9 +234,6 @@ export default async function handler(
                     rejectUnauthorized: false
                   })
                 })
-                  .then(res => {
-                    console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
-                  })
                   .catch(err => {
                     timberLogData = {
                       ...timberLogData,
