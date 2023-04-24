@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
+import https from 'node:https'
 import axios from 'axios'
 
 let timberLogData: any = {}
@@ -135,7 +136,10 @@ export default async function handler(
 
           axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}_${commentId}/comments?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
             method: 'POST',
-            data
+            data,
+            httpsAgent: new https.Agent({
+              rejectUnauthorized: false
+            })
           })
             .catch(err => {
               timberLogData = {
@@ -182,7 +186,10 @@ export default async function handler(
 
                 axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
                   method: 'POST',
-                  data
+                  data,
+                  httpsAgent: new https.Agent({
+                    rejectUnauthorized: false
+                  })
                 })
                   .then(res => {
                     console.log("MESSAGE HOOK SUCCESSFULL:", "\n", JSON.stringify(res.data))
