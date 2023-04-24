@@ -91,6 +91,7 @@ async function getVideoCDNUrl(url: string, postIdOnly?: boolean) {
               whatsFailing: 'CDN Extraction',
               message: 'Failed to get CDN',
               reason: 'No matches for "twitter:player"',
+              embedsTemplate,
               url,
             }
           }
