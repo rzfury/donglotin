@@ -172,8 +172,6 @@ export default async function handler(
       }
     }
     else {
-      console.log('WEBHOOK! 2')
-
       try {
         if (body.entry[0].changes?.[0].field === 'mention') {
           const postId = body.entry[0].changes[0].value.post_id;
@@ -205,6 +203,7 @@ export default async function handler(
             });
         }
         else if (body.entry[0].messaging?.[0]) {
+          console.log('WEBHOOK! 2')
           if (body.entry[0].messaging[0].sender.id === '12334') {
             timber.log({
               __source: 'Donglotin',
@@ -214,6 +213,8 @@ export default async function handler(
           }
           else {
             const attachments = body.entry[0].messaging[0].message.attachments;
+
+          console.log(JSON.stringify(body))
 
             if (Array.isArray(attachments)) {
               const payload = attachments[0].payload;
