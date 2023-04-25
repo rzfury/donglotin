@@ -32,7 +32,6 @@ export default function PP() {
   return (
     <div className="p-4">
       <H1B>Privacy Policy</H1B>
-      <P>Last updated: April 25, 2023</P>
       <P>This Privacy Policy describes the manner in which Donglotin collects, use and discloses information collected from users (each, a "User") of the https://donglotin.rzfury.dev/ website ("Site") </P>
 
       <BR />
