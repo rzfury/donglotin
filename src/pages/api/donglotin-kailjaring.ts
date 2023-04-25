@@ -11,7 +11,7 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<any>
 ) {
-  console.log('WEBHOOK! 1')
+  console.log('Function Hit!');
 
   if (req.method === 'GET') {
     const query = req.query;
@@ -37,7 +37,13 @@ export default async function handler(
       const commentId = body.entry[0].changes[0].value.comment_id;
       const postUrl = `https://www.facebook.com/${postId}`;
       const cdnUrl = await getVideoCDNUrl(postUrl).catch(err => {
-        throw err
+        timber.log({
+          __source: 'Donglotin',
+          message: 'Failed to get CDN',
+          errorData: err.response,
+          apiPayload: data,
+          webhookEntries: body.entry
+        })
       });
       const data = {
         message: cdnUrl,
@@ -58,7 +64,7 @@ export default async function handler(
       return;
     }
 
-    if (body.entry[0].messaging?.[0].sender.id === '12334') {
+    if (body.entry[0].messaging?.[0].sender.id.toString() === '12334') {
       timber.log({
         __source: 'Donglotin',
         message: 'Testing value received for messaging webhook',
@@ -76,35 +82,40 @@ export default async function handler(
 
       if (typeof (payload.url) === 'string') {
         const cdnUrl: any = await getVideoCDNUrl(payload.url).catch(err => {
-          throw err;
+          timber.log({
+            __source: 'Donglotin',
+            message: 'Failed to get CDN',
+            errorData: err,
+            payloadUrl: payload.url,
+            webhookEntries: body.entry
+          })
         });
 
-        let message = '';
+        let responseMessage = '';
         if (typeof (cdnUrl.hdSrc) === 'string') {
-          message = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
+          responseMessage = `Kualitas: HD dan Standar.\n\nHD: ${cdnUrl.hdSrc}\n\nStandar: ${cdnUrl.sdSrcNoRateLimit}`;
         }
         else {
-          message = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
+          responseMessage = `Kualitas: Standar.\n\n${cdnUrl.sdSrcNoRateLimit}`;
         }
 
-        const data = {
+        const apiPayload = {
           message: {
-            text: message
+            text: responseMessage
           },
           recipient: {
             id: senderId.toString(),
           }
         };
 
-        await axios(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`, {
-          method: 'POST',
-          data,
+        console.log('fail?')
+        await axios.post(`https://graph.facebook.com/v16.0/${process.env.PAGE_ID}/messages?access_token=${process.env.PAGE_MESSENGER_TOKEN}`, apiPayload, {
           httpsAgent: new https.Agent({
             rejectUnauthorized: false
           })
         })
           .then(res => {
-            console.log('SUCCESS SEND TO USER: ' + JSON.stringify(res.data))
+            console.log('SUCCESS SEND TO USER')
             success = true;
           })
           .catch(err => {
@@ -112,8 +123,8 @@ export default async function handler(
               __source: 'Donglotin',
               whatsFailing: 'FB Graph API to reply to message',
               message: 'Failed to post reply on messaging',
-              errorData: err,
-              apiPayload: data,
+              errorData: JSON.stringify(err.response),
+              apiPayload: apiPayload,
               webhookEntries: body.entry
             })
           });
@@ -164,7 +175,7 @@ async function getVideoCDNUrl(url: string) {
         timber.log({
           __source: 'Donglotin',
           message: 'Get Video CDN: Case 1',
-          errorData: err,
+          errorData: err.response,
         })
       })
 
@@ -196,7 +207,7 @@ async function getVideoCDNUrl(url: string) {
               timber.log({
                 __source: 'Donglotin',
                 message: 'Get Video CDN: Case 2',
-                errorData: err,
+                errorData: err.response,
               })
             })
         }
@@ -223,7 +234,7 @@ async function getVideoCDNUrl(url: string) {
               timber.log({
                 __source: 'Donglotin',
                 message: 'Get Video CDN: Case 3',
-                errorData: err,
+                errorData: err.response,
               })
             })
         }
