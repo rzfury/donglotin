@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+body, body #__next {
+  @apply min-h-screen;
+}
+
 ul {
   @apply mb-4;
   list-style: disc;
