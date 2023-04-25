@@ -6,11 +6,11 @@ export default function PP() {
   }
 
   const H1 = (props: PropsWithChildren) => {
-    return <h1 className="text-4xl font-semibold mb-8">{props.children}</h1>
+    return <h1 className="text-4xl font-semibold mb-6">{props.children}</h1>
   }
 
   const H1B = (props: PropsWithChildren) => {
-    return <h1 className="text-4xl font-bold mb-8">{props.children}</h1>
+    return <h1 className="text-4xl font-bold mb-6">{props.children}</h1>
   }
 
   const H2 = (props: PropsWithChildren) => {
@@ -31,30 +31,51 @@ export default function PP() {
 
   return (
     <div className="p-4">
-
       <H1B>Privacy Policy</H1B>
       <P>Last updated: April 25, 2023</P>
       <P>This Privacy Policy describes the manner in which Donglotin collects, use and discloses information collected from users (each, a "User") of the https://donglotin.rzfury.dev/ website ("Site") </P>
 
+      <BR />
       <H1>Non-personal identification information</H1>
       <P>We may collect non-personal identification information about Users whenever they interact with our Site using Google Analytics. Non-personal identification information may include the browser name, the type of computer and technical information about Users means of connection to our Site, such as the operating system and the Internet service providers utilized and other similar information.</P>
 
+      <BR />
       <H1>Web browser cookies</H1>
       <P>Our Site may use "cookies" to enhance User experience. User's web browser places cookies on their hard drive for record-keeping purposes and sometimes to track information about them. User may choose to set their web browser to refuse cookies, or to alert you when cookies are being sent. If they do so, note that some parts of the Site may not function properly.</P>
-      
+
+      <BR />
       <H1>How we use collected information</H1>
-      <P>Twitter Video Downloader may collect and use Users personal information for the following purposes:</P>
+      <P>Donglotin may collect and use Users personal information for the following purposes:</P>
       <ul>
-        <li>To run and operate our Site We may need your information display content on the Site correctly.</li>
-        <li>To improve customer service Information you provide helps us respond to your customer service requests and support needs more efficiently.</li>
-        <li>To improve our Site We may use feedback you provide to improve our products and services.</li>
+        <li>
+          <div>
+            <div className="font-semibold">To run and operate our Site</div>
+            <div className="">We may need your information display content on the Site correctly.</div>
+          </div>
+        </li>
+        <li>
+          <div>
+            <div className="font-semibold">To improve customer service</div>
+            <div className="">Information you provide helps us respond to your customer service requests and support needs more efficiently.</div>
+          </div>
+        </li>
+        <li>
+          <div>
+            <div className="font-semibold">To improve our Site</div>
+            <div className="">We may use feedback you provide to improve our products and services.</div>
+          </div>
+        </li>
       </ul>
 
+      <BR />
       <H1>Your acceptance of these terms</H1>
       <P>By using this Site, you signify your acceptance of this policy. If you do not agree to this policy, please do not use our Site. Your continued use of the Site following the posting of changes to this policy will be deemed your acceptance of those changes.</P>
 
+      <BR />
       <H1>Contacting Us</H1>
       <P>If you have any questions about this Privacy Policy, the practices of this site, or your dealings with this site, please <ExtLink href="mailto:rzfury90@gmail.com?subject=Donglotin">Contact Us.</ExtLink></P>
+
+      <BR />
     </div>
   )
 }
